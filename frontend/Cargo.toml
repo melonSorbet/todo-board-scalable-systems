@@ -1,0 +1,16 @@
+[package]
+name = "frontend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gloo-net = "0.6.0"
+log = "0.4.27"
+
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"
+wasm-logger = "0.2.0"
+web-sys = "0.3.77"
+yew = { git = "https://github.com/yewstack/yew", rev = "3b5c891" ,features = ["csr"]}
+yew-router = { git = "https://github.com/yewstack/yew", rev = "3b5c891", package = "yew-router" }
+
