@@ -48,21 +48,7 @@ async fn get_tasks(){
 }
 #[function_component(Overview)]
 fn overview() -> Html {
-    use_effect(|| {
-        wasm_bindgen_futures::spawn_local(async {
-            let response = Request::get("https://api.github.com/users/rust-lang")
-                .send()
-                .await
-                .unwrap()
-                .text()
-                .await
-                .unwrap();
-            
-            web_sys::console::log_1(&response.into());
-        });
-        
-        || () // No cleanup needed
-    });
+    
     html!{
         <div class="container font-monospace">
             <div class="col">
@@ -82,56 +68,90 @@ fn impressum() -> Html{
         <div >{"frontend"}</div>
     }
 }
+use serde::{Deserialize, Serialize};
+#[derive(Serialize, Clone,Deserialize,Default,Properties,PartialEq)]
+pub struct TaskProp {
+    pub id: i32,
+    pub date: String,
+    pub inhalt: String,
+    pub percent: i32,
+}
+#[function_component]
+fn Task(props: &TaskProp) -> Html {
+    html! {
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="card-title">{ &props.inhalt}</h5>
+                    <span class="badge bg-primary">{ format!("{}%", props.percent) }</span>
+                </div>
+                <p class="card-text text-muted">
+                    <small>{ "Due: " }{ &props.date }</small>
+                </p>
+                <div class="progress mb-2">
+                    <div 
+                        class={classes!(
+                            "progress-bar",
+                            if props.percent >= 100 { "bg-success" } else { "" }
+                        )} 
+                        role="progressbar" 
+                        style={format!("width: {}%", props.percent)}
+                        aria-valuenow={props.percent.to_string()}
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                    >
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="btn btn-sm btn-outline-secondary">{"Edit"}</button>
+                    <button class="btn btn-sm btn-outline-danger">{"Delete"}</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
 #[function_component]
 fn Todo() -> Html{
+    
+    let tasks = use_state(|| vec![]);
+
+    {
+        let tasks = tasks.clone();
+        use_effect(move || {
+            wasm_bindgen_futures::spawn_local(async move {
+                let fetched = Request::get("http://localhost:3000/task")
+                    .send()
+                    .await
+                    .unwrap()
+                    .json::<Vec<TaskProp>>() // needs Deserialize
+                    .await
+                    .unwrap();
+
+                tasks.set(fetched);
+            });
+            || ()
+        });
+    }
+
+
     html!{
-        <div class="row">
-            <div class="col">
 
-                <UnfinishedTasks/>
-            </div>
-            <div class="col">
-
-                <FinishedTasks/>
-            </div>
+        html! {
+        <div class="container">
+            <h2>{ "All Tasks" }</h2>
+            { for tasks.iter().map(|task| html! {
+                <Task
+                    id={task.id} 
+                    date={task.date.clone()} 
+                    inhalt={task.inhalt.clone()} 
+                    percent={task.percent} 
+                />
+            })}
         </div>
     }
-}
-#[function_component]
-fn FinishedTasks() -> Html{
-    html!{
-        <div id={"finished"} class="text-center border rounded p-3 shadow-sm">
-            <div class="fw-bold">
-                <h2>{"FINISHED TASKS"}</h2>
-            </div>
-            <div class="border rounded p-3 d-flex justify-content-center align-items-center my-2" style="height: 100px;">
-                <p>{"finished Task 1"}</p>
-            </div>
-            <div class="border rounded p-3 d-flex justify-content-center align-items-center my-2" style="height: 100px;">
-                <p>{"finished Task 2"}</p>
-            </div>
-        </div>
     }
 }
-#[function_component]
-fn UnfinishedTasks() -> Html {
-    html! {
-        <div id={"unfinished"} class="text-center border rounded p-3 shadow-sm">
-            <div class="fw-bold">
-                <h2>{"UNFINISHED TASKS"}</h2>
-            </div>
-
-            <div class="border rounded p-3 d-flex justify-content-center align-items-center my-2" style="height: 100px;">
-                <p class="m-0">{"Unfinished Task 1"}</p>
-            </div>
-
-            <div class="border rounded p-3 d-flex justify-content-center align-items-center my-2" style="height: 100px;">
-                <p class="m-0">{"Unfinished Task 2"}</p>
-            </div>
-        </div>
-    }
-}
-
 #[function_component]
 fn TopBar() -> Html{
     let create_new_todo = Callback::from(move |_| {
@@ -150,43 +170,134 @@ fn TopBar() -> Html{
 
     }   
 }
+use yew::prelude::*;
+use web_sys::HtmlInputElement;
+use serde_json::json;
+use wasm_bindgen::JsValue;
+
 #[function_component]
-fn AddTaskPopUp() -> Html{
-    use_effect(|| {
-            // SAFETY: Calling JS function after the component is mounted.
-            unsafe {
-                initDatePicker();
-            }
-            || () // no cleanup needed
-        });
-    //keep track of variables using oninput
-    let onsubmit = Callback::from(move |form: yew::SubmitEvent| {
-        
-        // post request
+fn AddTaskPopUp() -> Html {
+    let task = use_state(|| TaskProp {
+        id: 0,
+        date: String::new(),
+        inhalt: String::new(),
+        percent: 0,
     });
+    
+    use_effect(|| {
+        unsafe {
+            initDatePicker();
+        }
+        || ()
+    });
+    
+    let on_description_input = {
+        let task = task.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_unchecked_into();
+            let mut current_task = (*task).clone();
+            current_task.inhalt= input.value();
+            task.set(current_task);
+        })
+    };
+    
+    let on_date_input = {
+        let task = task.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_unchecked_into();
+            let mut current_task = (*task).clone();
+            current_task.date = input.value();
+            task.set(current_task);
+        })
+    };
+    
+    let on_percent_input = {
+        let task = task.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_unchecked_into();
+            let percent = input.value().parse().unwrap_or(0);
+            let mut current_task = (*task).clone();
+            current_task.percent = percent;
+            task.set(current_task);
+        })
+    };
+    
+    let onsubmit = {
+        let task = task.clone();
+        Callback::from(move |e: SubmitEvent| {
+            e.prevent_default();
+            let task = (*task).clone();
+            
+            spawn_local(async move {
+                let body = json!({
+                    "id": task.id,
+                    "date": task.date,
+                    "inhalt": task.inhalt,
+                    "percent": task.percent
+                });
+
+                match Request::post("http://localhost:3000/task")
+                    .header("Content-Type", "application/json")
+                    .body(JsValue::from_str(&body.to_string()))
+                    .unwrap()
+                    .send()
+                    .await
+                {
+                    Ok(response) => {
+                        log::info!("Task created successfully");
+                    }
+                    Err(e) => {
+                        log::error!("Failed to create task: {:?}", e);
+                    }
+                }
+            });
+        })
+    };
+    
     html!{
         <div class="modal" tabindex="-1" id="exampleModal">
             <div class="modal-dialog">
               <div class="modal-content">
                 <div class="modal-header">
-                  <h5 class="modal-title">{"Modal title"}</h5>
+                  <h5 class="modal-title">{"Add New Task"}</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <form onsubmit={onsubmit}>
                         <div class="form-group">
-                            <label for="todotext">{"Todo-Text"}</label>
-                            <textarea type="text" class="form-control" id="todotext" rows=4 placeholder="TODO"/>
-                            
+                            <label for="taskDescription">{"Task Description"}</label>
+                            <textarea 
+                                class="form-control" 
+                                id="taskDescription" 
+                                rows=4 
+                                placeholder="Enter task description"
+                                oninput={on_description_input}
+                                value={task.inhalt.clone()}
+                            />
                         </div>
                         <div class="form-group">
                             <label for="datepicker">{"Due Date"}</label>
-                            <input type="text" class="form-control" id="datepicker" placeholder="Select date"/>
+                            <input 
+                                type="text" 
+                                class="form-control" 
+                                id="datepicker" 
+                                placeholder="Select date"
+                                oninput={on_date_input}
+                                value={task.date.clone()}
+                            />
                         </div>
                         <div class="form-group">
-                            <label for="percenttext">{"Definition-of-done"}</label>
-                            <textarea type="text" class="form-control" id="todotext" placeholder="100%"/>
-                            
+                            <label for="percentComplete">{"Percent Complete"}</label>
+                            <input 
+                                type="number" 
+                                class="form-control" 
+                                id="percentComplete" 
+                                placeholder="0-100"
+                                min="0"
+                                max="100"
+                                oninput={on_percent_input}
+                                value={task.percent.to_string()}
+                            />
                         </div>
                         <button type="submit" class="btn btn-primary">{"Submit"}</button>
                     </form>
@@ -197,7 +308,6 @@ fn AddTaskPopUp() -> Html{
               </div>
             </div>
           </div>
-                    
     }
 }
 fn main() {

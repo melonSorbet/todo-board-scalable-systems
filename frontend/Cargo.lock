@@ -102,6 +102,8 @@ version = "0.1.0"
 dependencies = [
  "gloo-net 0.6.0",
  "log",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-logger",
