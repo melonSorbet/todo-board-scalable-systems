@@ -4,7 +4,10 @@ use axum::{
     Json, Router,
 };
 use diesel::result::Error;
+use tower_http::cors::{Any, CorsLayer};
+use axum::http::{HeaderName,Method};
 use serde::{Deserialize, Serialize};
+
 pub mod models;
 pub mod schema;
 use self::schema::todos::dsl::*;
@@ -16,12 +19,16 @@ use diesel_async::{RunQueryDsl, AsyncConnection, AsyncMysqlConnection};
 #[tokio::main] 
 async fn main() {
     println!("{:?}",get_all_todos().await);
+    let cors = CorsLayer::new()
+    .allow_methods([Method::GET, Method::POST, Method::PUT,Method::DELETE])
+    .allow_origin(Any)
+    .allow_headers([HeaderName::from_static("content-type")]);
     let app: Router<()> = Router::new()
-    .route("/task", post(post_tasks))
+    .route("/task", post(post_tasks)) 
     .route("/task", get(get_tasks))
     .route("/task", put(update_tasks))
     .route("/task", delete(delete_tasks))
-    .route("/", get(hello_world))
+    .route("/", get(hello_world)).layer(cors)
     .with_state(());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -41,7 +48,7 @@ struct CreateTodo {
 
 async fn post_tasks(Json(payload) : Json<CreateTodo>) -> StatusCode{
     let new_post = models::NewTodo{date: payload.date.as_str(), inhalt: payload.inhalt.as_str(),percent:payload.percent};
-    
+    println!("cool");
     match create_new_todo(new_post).await{
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR

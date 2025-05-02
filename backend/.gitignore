@@ -1,3 +1,4 @@
 target/
 diesel.toml
 .env
+compile_commands.json
