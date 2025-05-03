@@ -76,8 +76,44 @@ pub struct TaskProp {
     pub inhalt: String,
     pub percent: i32,
 }
+async fn delete_task_request(task_id: i32) {
+    let body = json!({ "id": task_id });
+
+    let response = Request::delete("http://localhost:3000/task")
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .unwrap() // panic if body creation fails
+        .send()
+        .await;
+
+    match response {
+        Ok(_) => log::info!("Task deleted successfully"),
+        Err(e) => log::error!("Failed to delete task: {:?}", e),
+    }
+}
+
 #[function_component]
 fn Task(props: &TaskProp) -> Html {
+    let on_delete = {
+    let task_id = props.id;
+    Callback::from(move |_| {
+        spawn_local(async move {
+            let result = Request::delete("http://localhost:3000/task")
+                .header("Content-Type", "application/json")
+                .body(json!({ "id": task_id }).to_string())
+                .unwrap()
+                .send()
+                .await;
+
+            match result {
+                Ok(_) => log::info!("Deleted task {}", task_id),
+                Err(e) => log::error!("Error deleting task: {:?}", e),
+            }
+        });
+    })
+};
+
+
     html! {
         <div class="card mb-3">
             <div class="card-body">
@@ -104,7 +140,7 @@ fn Task(props: &TaskProp) -> Html {
                 </div>
                 <div class="d-flex justify-content-end gap-2">
                     <button class="btn btn-sm btn-outline-secondary">{"Edit"}</button>
-                    <button class="btn btn-sm btn-outline-danger">{"Delete"}</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick={on_delete}>{"Delete"}</button>
                 </div>
             </div>
         </div>
